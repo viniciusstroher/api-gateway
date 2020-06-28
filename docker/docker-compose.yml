@@ -9,6 +9,7 @@ networks:
           ip_range: 192.168.0.0/28
 
 services:
+  #db
   api-gateway-database-postgres:
     image:
       postgres:12.2
@@ -21,7 +22,13 @@ services:
     networks:
       network-api-gateway:
         ipv4_address: 192.168.0.81
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  #migration
   api-gateway-kong-migration-command:
     image:
       kong:alpine
@@ -34,11 +41,13 @@ services:
       - KONG_PG_DATABASE=kong
       - KONG_PG_HOST=192.168.0.81
     depends_on:
-      - "api-gateway-database-postgres"
+      api-gateway-database-postgres:
+        condition: service_healthy
     networks:
       network-api-gateway:
         ipv4_address: 192.168.0.82
 
+  #api-gateway
   api-gateway-kong:
     image:
       kong:alpine
@@ -50,10 +59,11 @@ services:
     - KONG_PG_USER=kong
     - KONG_PG_DATABASE=kong
     - KONG_PG_HOST=192.168.0.81
-    - KONG_ADMIN_LISTEN:0.0.0.0:8001,
+    - KONG_ADMIN_LISTEN:0.0.0.0:8001
     - KONG_ADMIN_LISTEN_SSL:0.0.0.0:8444
     depends_on:
       - "api-gateway-kong-migration-command"
+      - "api-gateway-database-postgres"
     ports:
       - "8000:8000"
       - "8443:8443"
@@ -62,4 +72,29 @@ services:
     networks:
       network-api-gateway:
         ipv4_address: 192.168.0.83
+    restart: on-failure
+
+  api-gateway-admin-konga:
+    image: "pantsel/konga"
+    user: root
+    links: [api-gateway-database-postgres]
+    environment:
+      - DB_ADAPTER:postgres
+      - DB_PASSWORD=kong
+      - DB_USER=kong
+      - DB_DATABASE=kong
+      - DB_PG_SCHEMA=kong
+      - DB_HOST=192.168.0.81
+      - DB_PORT=5432
+      - NODE_ENV=production
+      - TOKEN_SECRET=
+    depends_on:
+      - "api-gateway-kong"
+      - "api-gateway-kong-migration-command"
+      - "api-gateway-database-postgres"
+    ports:
+      - "1337:1337"
+    networks:
+      network-api-gateway:
+        ipv4_address: 192.168.0.84
     restart: on-failure
