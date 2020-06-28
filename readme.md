@@ -3,6 +3,13 @@
 # Start lin
 eslint --init
 
+##### Conectar em localhost:5432 
+````
+kong:db
+kong:user
+kong:pwd
+````
+
 ## win
 ```bash
 docker run -d --name kong-database ^
