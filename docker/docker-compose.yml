@@ -1,0 +1,65 @@
+version: '2.4'
+networks:
+  network-api-gateway:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.0.0/24
+          ip_range: 192.168.0.0/28
+
+services:
+  api-gateway-database-postgres:
+    image:
+      postgres:12.2
+    ports:
+    - "5432:5432"
+    environment:
+    - POSTGRES_USER=kong
+    - POSTGRES_PASSWORD=kong
+    - POSTGRES_DB=kong
+    networks:
+      network-api-gateway:
+        ipv4_address: 192.168.0.81
+
+  api-gateway-kong-migration-command:
+    image:
+      kong:alpine
+    user: root
+    command: "kong migrations bootstrap"
+    environment:
+      - KONG_DATABASE:postgres
+      - KONG_PG_PASSWORD=kong
+      - KONG_PG_USER=kong
+      - KONG_PG_DATABASE=kong
+      - KONG_PG_HOST=192.168.0.81
+    depends_on:
+      - "api-gateway-database-postgres"
+    networks:
+      network-api-gateway:
+        ipv4_address: 192.168.0.82
+
+  api-gateway-kong:
+    image:
+      kong:alpine
+    user: root
+    links: [api-gateway-database-postgres]
+    environment:
+    - KONG_DATABASE:postgres
+    - KONG_PG_PASSWORD=kong
+    - KONG_PG_USER=kong
+    - KONG_PG_DATABASE=kong
+    - KONG_PG_HOST=192.168.0.81
+    - KONG_ADMIN_LISTEN:0.0.0.0:8001,
+    - KONG_ADMIN_LISTEN_SSL:0.0.0.0:8444
+    depends_on:
+      - "api-gateway-kong-migration-command"
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+      - "8001:8001"
+      - "8444:8444"
+    networks:
+      network-api-gateway:
+        ipv4_address: 192.168.0.83
+    restart: on-failure
